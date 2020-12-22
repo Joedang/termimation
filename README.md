@@ -1,6 +1,8 @@
 # Termimation (terminal animation)
 Display a short video or GIF in the terminal.
 You can [check out a video demonstration here.](https://imgur.com/a/Tup3RIp)
+This was inspired by -- and is a much more general version of -- [malav097's shell-emotions](https://github.com/malav097/shell-emotions).
+Suggestions and pull requests are welcome.
 
 ## Usage
 `termimation input.gif` will convert the GIF into a series of images (in `/tmp/`), 
