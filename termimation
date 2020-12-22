@@ -1,32 +1,38 @@
 #!/usr/bin/env bash
 # Play an animation as ascii in the terminal.
-# dependencies: bash (obviously), coreutils, ffmpeg (or imagemagick), jp2a (or libcaca?), bc
+# dependencies: bash (obviously), coreutils, ffmpeg (or imagemagick), jp2a (or libcaca), bc
 # author: Joe Shields
 # date: 2020-12-21
 
 # ----- config -----
-sourceFile="$1"
-jp2a_opts="--colors"
-#echo jp2a_opts: $jp2a_opts
+sourceFile="$1" # gif or video to display
+txt_opts="--colors" # options to pass to the image->text conversion tool
+txtConvert=jp2a # tool to convert images to text; jp2a (default) or img2txt
+cache=-1 # set to a negative value to re-explode the input animation every time
 
 # ----- prep work -----
 bn="${sourceFile##*/}" # remove leading directories
-bn="${bn%.*}" # remove extension
-tmpdir="/tmp/frames-$bn"
+tmpdir="/tmp/frames-${bn%.*}" # form a directory name and remove extension
 mkdir -p "$tmpdir"
-#rm "$tmpdir/*"
-ffmpeg -n -loglevel error -i "$sourceFile" "$tmpdir"/frame%05d.png \
-    || printf 'falling back to imagemagick for explosion...\n' \
-    && convert -coalesce "$sourceFile" "$tmpdir"/frame%05d.png
+if [[ "$(ls $tmpdir)" == "" || "$cache" -lt 0 ]]; then
+    printf "exploding frames to $tmpdir...\n"
+    ffmpeg -n -loglevel error -i "$sourceFile" "$tmpdir"/frame%05d.png \
+        || printf 'falling back to imagemagick for explosion...\n' \
+        && convert -coalesce "$sourceFile" "$tmpdir"/frame%05d.png
+fi
 duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -i "$sourceFile") \
     || printf 'falling back to imagemagick for duration measuring...\n' \
     && duration=$(printf "scale=6; ($(identify -format "%T+" "$sourceFile")0)/100\n" | bc)
 nframes=$(ls "$tmpdir" | wc -l)
 delay=$(printf "scale=6; $duration/$nframes\n" | bc)
+# If txtConvert is not found,          check if jp2a is available and use it,   otherwise use img2txt.
+type "$txtConvert" > /dev/null 2>&1 || type jp2a > /dev/null && txtConvert=jp2a || txtConvert=img2txt
+printf "conversion tool is $txtConvert\n"
+printf "converting exploded frames to text...\n"
 declare -a frames
 for f in "$tmpdir"/*
 do # create an array holding the text for each frame
-    frames+=("$(jp2a $jp2a_opts "$f")")
+    frames+=("$($txtConvert $txt_opts "$f")")
 done
 
 # ----- animation function -----
@@ -36,7 +42,7 @@ animate() {
     do
         for f in "${frames[@]}"
         do 
-            printf "\e[0;0H$f" # draw the frame at the 0th row and 0th column
+            printf "\e[0;0H%s" "$f" # draw the frame at the 0th row and 0th column; don't interpret $f
             sleep "$delay"
         done
     done
@@ -44,9 +50,10 @@ animate() {
 
 # ----- animation -----
 #printf "preview frames:\n"
+#printf "number of frames: ${#frames[@]}"
 #for f in "${frames[@]}"
 #do 
-#    printf "$f\n"
+#    printf "%s\n" "$f"
 #done
 read -p "press enter to begin animation" _ # uncomment to pause before animating; helpful for debugging
 printf "\e[?25l" # turn off the cursor
