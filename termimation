@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Play an animation as ascii in the terminal.
+# dependencies: bash (obviously), coreutils, ffmpeg (or imagemagick), jp2a (or libcaca?), bc
+# author: Joe Shields
+# date: 2020-12-21
+
+# ----- config -----
+sourceFile="$1"
+jp2a_opts="--colors"
+#echo jp2a_opts: $jp2a_opts
+
+# ----- prep work -----
+bn="${sourceFile##*/}" # remove leading directories
+bn="${bn%.*}" # remove extension
+tmpdir="/tmp/frames-$bn"
+mkdir -p "$tmpdir"
+#rm "$tmpdir/*"
+ffmpeg -n -loglevel error -i "$sourceFile" "$tmpdir"/frame%05d.png \
+    || printf 'falling back to imagemagick for explosion...\n' \
+    && convert -coalesce "$sourceFile" "$tmpdir"/frame%05d.png
+duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -i "$sourceFile") \
+    || printf 'falling back to imagemagick for duration measuring...\n' \
+    && duration=$(printf "scale=6; ($(identify -format "%T+" "$sourceFile")0)/100\n" | bc)
+nframes=$(ls "$tmpdir" | wc -l)
+delay=$(printf "scale=6; $duration/$nframes\n" | bc)
+declare -a frames
+for f in "$tmpdir"/*
+do # create an array holding the text for each frame
+    frames+=("$(jp2a $jp2a_opts "$f")")
+done
+
+# ----- animation function -----
+animate() {
+    trap "return 0;" SIGINT SIGQUIT # exit the function if interrupted or quit
+    while :
+    do
+        for f in "${frames[@]}"
+        do 
+            printf "\e[0;0H$f" # draw the frame at the 0th row and 0th column
+            sleep "$delay"
+        done
+    done
+}
+
+# ----- animation -----
+#printf "preview frames:\n"
+#for f in "${frames[@]}"
+#do 
+#    printf "$f\n"
+#done
+read -p "press enter to begin animation" _ # uncomment to pause before animating; helpful for debugging
+printf "\e[?25l" # turn off the cursor
+animate
+printf "\e[?25h" # turn on the cursor
+exit 0
